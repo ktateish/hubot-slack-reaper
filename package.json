@@ -1,0 +1,39 @@
+{
+  "name": "hubot-slack-reaper",
+  "description": "A hubot script for reaping messages",
+  "version": "0.0.0",
+  "author": "Katsuyuki Tateishi <kt@wheel.jp>",
+  "license": "BSD",
+
+  "keywords": ["hubot","hubot-scripts","remove","delete","/dev/null"],
+
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/ktateish/hubot-slack-reaper.git"
+  },
+
+  "bugs": {
+    "url": "https://github.com/ktateish/hubot-slack-reaper/issues"
+  },
+
+  "dependencies": {
+    "coffee-script": "~1.6"
+  },
+
+  "devDependencies": {
+    "mocha": "*",
+    "chai": "*",
+    "sinon-chai": "*",
+    "sinon": "*",
+    "grunt-mocha-test": "~0.7.0",
+    "grunt-release": "~0.6.0",
+    "matchdep": "~0.1.2",
+    "grunt-contrib-watch": "~0.5.3"
+  },
+
+  "main": "index.coffee",
+
+  "scripts": {
+    "test": "grunt test"
+  }
+}
