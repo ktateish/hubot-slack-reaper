@@ -30,8 +30,6 @@ duration = if process.env.HUBOT_SLACK_REAPER_DURATION
              300
 apitoken = process.env.SLACK_API_TOKEN
 
-delMessage = (robot, channel, msgid) ->
-
 module.exports = (robot) ->
   robot.hear regex, (res) ->
     if targetroom
