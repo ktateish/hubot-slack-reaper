@@ -20,14 +20,8 @@
 #   Katsuyuki Tateishi <kt@wheel.jp>
 
 targetroom = process.env.HUBOT_SLACK_REAPER_CHANNEL
-regex = new RegExp(if process.env.HUBOT_SLACK_REAPER_REGEX
-                     process.env.HUBOT_SLACK_REAPER_REGEX
-                   else
-                     ".*")
-duration = if process.env.HUBOT_SLACK_REAPER_DURATION
-             process.env.HUBOT_SLACK_REAPER_DURATION
-           else
-             300
+regex = new RegExp(process.env.HUBOT_SLACK_REAPER_REGEX ? ".*")
+duration = process.env.HUBOT_SLACK_REAPER_DURATION ? 300
 apitoken = process.env.SLACK_API_TOKEN
 
 module.exports = (robot) ->
