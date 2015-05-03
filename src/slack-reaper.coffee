@@ -3,6 +3,14 @@
 #
 # Configuration:
 #   SLACK_API_TOKEN		- Slack API Token (default. undefined )
+#   HUBOT_SLACK_REAPER_SETTINGS - Set remote JSON file url includes target
+#             channels with multiple patterns and durations.
+#             For example:
+#               { "channelRegExp1": { "patternRegExp1": duration1,
+#                                     "patternRegExp2": duration2 },
+#                 "channelRegExp2": { "patternRegExp3": duration3 } }
+#
+#   Unless set HUBOT_SLACK_REAPER_SETTINGS, use configurations as below
 #   HUBOT_SLACK_REAPER_CHANNEL	- Target channel
 #   			 	  (default. undefined i.e. all channels)
 #   HUBOT_SLACK_REAPER_REGEX	- Target pattern (default. ".*")
@@ -21,20 +29,32 @@
 
 cloneDeep = require 'lodash.clonedeep'
 
-targetroom = process.env.HUBOT_SLACK_REAPER_CHANNEL
-regex = new RegExp(if process.env.HUBOT_SLACK_REAPER_REGEX
-                     process.env.HUBOT_SLACK_REAPER_REGEX
-                   else
-                     ".*")
-duration = if process.env.HUBOT_SLACK_REAPER_DURATION
-             process.env.HUBOT_SLACK_REAPER_DURATION
-           else
-             300
 apitoken = process.env.SLACK_API_TOKEN
 
 delMessage = (robot, channel, msgid) ->
 
 module.exports = (robot) ->
+
+  settings = undefined
+  if process.env.HUBOT_SLACK_REAPER_SETTINGS
+    url = process.env.HUBOT_SLACK_REAPER_SETTINGS
+    robot.logger.info("Read json from:" + url)
+    robot.http(url)
+      .get() (err, resp, body) ->
+        try
+          settings = JSON.parse body
+          robot.logger.info("settings:" + JSON.stringify settings)
+        catch error
+          robot.logger.error("JSON parse error")
+  else
+    targetroom = process.env.HUBOT_SLACK_REAPER_CHANNEL ? "^dev_null$"
+    regex = process.env.HUBOT_SLACK_REAPER_REGEX ? ".*"
+    duration = process.env.HUBOT_SLACK_REAPER_DURATION ? 300
+    try
+      settings = JSON.parse "{ \"#{targetroom}\": { \"#{regex}\": #{duration} } }"
+      robot.logger.info("settings:" + JSON.stringify settings)
+    catch error
+      robot.logger.error("JSON parse error")
 
   data = {}
   latestData = {}
@@ -94,33 +114,50 @@ module.exports = (robot) ->
       return msgs.join("\n")
     return ""
 
+  isInChannel = (channel) ->
+    for roomRegExp, _ of settings
+      if RegExp(roomRegExp).test(channel)
+        return true
+    return false
+
+  getDeleteDuration = (channel, msg) ->
+    durations = []
+    for roomRegExp, patternRegExps of settings
+      for msgRegExp, duration of patternRegExps
+        if RegExp(roomRegExp).test(channel)
+          if RegExp(msgRegExp).test(msg)
+            durations.push(duration)
+    return Math.min.apply 0, durations
+
   robot.hear /^score$/, (res) ->
-    if targetroom
-      if res.message.room != targetroom
-        return
+    if not isInChannel(res.message.room)
+      return
     reply = score(res.message.room)
     if reply.length > 0
       res.send reply
 
-  robot.hear regex, (res) ->
-    if targetroom
-      if res.message.room != targetroom
-        return
-    msgid = res.message.id
-    channel = res.message.rawMessage.channel
-    rmjob = ->
-      echannel = escape(channel)
-      emsgid = escape(msgid)
-      eapitoken = escape(apitoken)
-      robot.http("https://slack.com/api/chat.delete?token=#{eapitoken}&ts=#{emsgid}&channel=#{echannel}")
-        .get() (err, resp, body) ->
-          try
-            json = JSON.parse(body)
-            if json.ok
-              robot.logger.info("Removed #{res.message.user.name}'s message \"#{res.message.text}\" in #{res.message.room}")
-            else
-              robot.logger.error("Failed to remove message")
-          catch error
-            robot.logger.error("Failed to request removing message #{msgid} in #{channel} (reason: #{error})")
-    setTimeout(rmjob, duration * 1000)
-    sumUp res.message.room, res.message.user.name.toLowerCase()
+  robot.hear /.*/, (res) ->
+    if not isInChannel(res.message.room)
+      return
+
+    delDur = getDeleteDuration res.message.room, res.message.text
+
+    if delDur isnt Infinity
+      msgid = res.message.id
+      channel = res.message.rawMessage.channel
+      rmjob = ->
+        echannel = escape(channel)
+        emsgid = escape(msgid)
+        eapitoken = escape(apitoken)
+        robot.http("https://slack.com/api/chat.delete?token=#{eapitoken}&ts=#{emsgid}&channel=#{echannel}")
+          .get() (err, resp, body) ->
+            try
+              json = JSON.parse(body)
+              if json.ok
+                robot.logger.info("Removed #{res.message.user.name}'s message \"#{res.message.text}\" in #{res.message.room}")
+              else
+                robot.logger.error("Failed to remove message")
+            catch error
+              robot.logger.error("Failed to request removing message #{msgid} in #{channel} (reason: #{error})")
+      setTimeout(rmjob, duration * 1000)
+      sumUp res.message.room, res.message.user.name.toLowerCase()
