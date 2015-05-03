@@ -136,6 +136,9 @@ module.exports = (robot) ->
     if reply.length > 0
       res.send reply
 
+  robot.hear /^settings$/, (res) ->
+    res.send "```" + JSON.stringify(settings) + "```"
+
   robot.hear /.*/, (res) ->
     if not isInChannel(res.message.room)
       return
