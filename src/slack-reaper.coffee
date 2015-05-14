@@ -3,6 +3,7 @@
 #
 # Configuration:
 #   SLACK_API_TOKEN		- Slack API Token (default. undefined )
+#   TZ                - Timezone
 #   HUBOT_SLACK_REAPER_SETTINGS - Set remote JSON file url includes target
 #             channels with multiple patterns and durations.
 #             For example:
@@ -28,8 +29,11 @@
 #   Katsuyuki Tateishi <kt@wheel.jp>
 
 cloneDeep = require 'lodash.clonedeep'
+cronJob = require('cron').CronJob
+time = require 'time'
 
 apitoken = process.env.SLACK_API_TOKEN
+timezone = process.env.TZ ? ""
 
 module.exports = (robot) ->
 
@@ -55,6 +59,8 @@ module.exports = (robot) ->
       robot.logger.error("JSON parse error")
 
   data = {}
+  room = {}
+  report = []
   latestData = {}
   loaded = false
 
@@ -64,6 +70,7 @@ module.exports = (robot) ->
     if !loaded
       try
         data = JSON.parse robot.brain.get "hubot-slack-reaper-sumup"
+        room = JSON.parse robot.brain.get "hubot-slack-reaper-room"
       catch error
         robot.logger.info("JSON parse error (reason: #{error})")
       latestData = cloneDeep data
@@ -126,6 +133,50 @@ module.exports = (robot) ->
           if RegExp(msgRegExp).test(msg)
             durations.push(duration)
     return Math.min.apply 0, durations
+
+  addRoom = (channel, setting, cron) ->
+    channel = escape channel
+    if !room
+      room = {}
+    if setting is "enable"
+      # check cron pattern
+      try
+        new cronJob "0 " + cron, () ->
+      catch error
+        robot.logger.error("Invalid cron pattern:" + cron)
+        return false
+      room[channel] = cron
+    else
+      room[channel] = "disable"
+
+    if loaded
+      robot.brain.set "hubot-slack-reaper-room", JSON.stringify room
+    return true
+
+  enableReport = ->
+    for job in report
+      job.stop()
+    report = []
+
+    if loaded
+      for channel, setting of room
+        if setting isnt "disable"
+          report[report.length] = new cronJob "0 " + setting, () ->
+            robot.send { room: channel }, score(channel)
+          , null, true, timezone
+  enableReport()
+
+  robot.hear /^report (enable|disable|list) *(\S+ \S+ \S+ \S+ \S+)*$/, (res) ->
+    if res.match[1] is "enable" or res.match[1] is "disable"
+      if addRoom(res.message.room, res.match[1], res.match[2])
+        msg = res.match[1] + " score report of " + res.message.room + " " + res.match[2]
+        robot.logger.info(msg)
+        res.send msg
+        enableReport()
+      else
+        res.send "Failed to change cron setting"
+    else if res.match[1] is "list"
+      res.send JSON.stringify room
 
   robot.hear /^score$/, (res) ->
     if not isInChannel(res.message.room)
